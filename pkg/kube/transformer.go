@@ -77,12 +77,15 @@ func containersFromCoreV1(containers []corev1.Container) []core.ContainerSpec {
 	}
 	out := make([]core.ContainerSpec, 0, len(containers))
 	for _, container := range containers {
+		env, envValueFrom := envFromCoreV1(container.Env)
 		out = append(out, core.ContainerSpec{
 			Name:            container.Name,
 			Image:           container.Image,
 			Command:         append([]string(nil), container.Command...),
 			Args:            append([]string(nil), container.Args...),
-			Env:             envFromCoreV1(container.Env),
+			Env:             env,
+			EnvValueFrom:    envValueFrom,
+			EnvFrom:         envFromSourcesFromCoreV1(container.EnvFrom),
 			Ports:           portsFromCoreV1(container.Ports),
 			Resources:       resourcesFromCoreV1(container.Resources),
 			SecurityContext: securityContextFromCoreV1(container.SecurityContext),
@@ -91,15 +94,35 @@ func containersFromCoreV1(containers []corev1.Container) []core.ContainerSpec {
 	return out
 }
 
-func envFromCoreV1(env []corev1.EnvVar) map[string]string {
+func envFromCoreV1(env []corev1.EnvVar) (map[string]string, []string) {
 	if len(env) == 0 {
-		return nil
+		return nil, nil
 	}
 	out := make(map[string]string, len(env))
+	var valueFrom []string
 	for _, item := range env {
 		if item.ValueFrom == nil {
 			out[item.Name] = item.Value
+		} else {
+			valueFrom = append(valueFrom, item.Name)
 		}
+	}
+	return out, valueFrom
+}
+
+func envFromSourcesFromCoreV1(envFrom []corev1.EnvFromSource) []string {
+	if len(envFrom) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(envFrom))
+	for _, source := range envFrom {
+		name := ""
+		if source.ConfigMapRef != nil {
+			name = source.ConfigMapRef.Name
+		} else if source.SecretRef != nil {
+			name = source.SecretRef.Name
+		}
+		out = append(out, source.Prefix+name)
 	}
 	return out
 }

@@ -58,6 +58,8 @@ type ContainerSpec struct {
 	Command         []string
 	Args            []string
 	Env             map[string]string
+	EnvValueFrom    []string
+	EnvFrom         []string
 	Ports           []PortSpec
 	Resources       ResourceSpec
 	SecurityContext SecurityContext
@@ -148,6 +150,20 @@ func (DefaultTransformer) Transform(pod PodSpec) (WorkloadRequest, error) {
 			Code:    "UnsupportedPrivilegedContainer",
 			Field:   "spec.containers[0].securityContext.privileged",
 			Message: "privileged containers are not supported on remote GPU providers",
+		}
+	}
+	if len(container.EnvValueFrom) > 0 {
+		return WorkloadRequest{}, &UnsupportedSpecError{
+			Code:    "UnsupportedEnvValueFrom",
+			Field:   fmt.Sprintf("spec.containers[0].env[%s].valueFrom", container.EnvValueFrom[0]),
+			Message: "env valueFrom is not supported; set a literal value instead",
+		}
+	}
+	if len(container.EnvFrom) > 0 {
+		return WorkloadRequest{}, &UnsupportedSpecError{
+			Code:    "UnsupportedEnvFrom",
+			Field:   "spec.containers[0].envFrom",
+			Message: "envFrom is not supported; set literal values instead",
 		}
 	}
 	if strings.TrimSpace(container.Image) == "" {

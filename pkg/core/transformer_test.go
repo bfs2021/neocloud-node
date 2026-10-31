@@ -307,3 +307,66 @@ func TestTransformerRejectsPhase1UnsupportedSpecs(t *testing.T) {
 		})
 	}
 }
+
+func TestTransformerRejectsEnvIndirection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		pod   PodSpec
+		code  string
+		field string
+	}{
+		{
+			name: "env valueFrom",
+			pod: PodSpec{
+				Containers: []ContainerSpec{
+					{
+						Name:         "main",
+						Image:        "example.com/train:latest",
+						Env:          map[string]string{"MODEL": "llama"},
+						EnvValueFrom: []string{"HF_TOKEN"},
+						Resources:    ResourceSpec{GPUCount: 1},
+					},
+				},
+			},
+			code:  "UnsupportedEnvValueFrom",
+			field: "spec.containers[0].env[HF_TOKEN].valueFrom",
+		},
+		{
+			name: "envFrom",
+			pod: PodSpec{
+				Containers: []ContainerSpec{
+					{
+						Name:      "main",
+						Image:     "example.com/train:latest",
+						Env:       map[string]string{"MODEL": "llama"},
+						EnvFrom:   []string{"model-secret"},
+						Resources: ResourceSpec{GPUCount: 1},
+					},
+				},
+			},
+			code:  "UnsupportedEnvFrom",
+			field: "spec.containers[0].envFrom",
+		},
+	}
+
+	transformer := DefaultTransformer{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := transformer.Transform(tt.pod)
+			var unsupported *UnsupportedSpecError
+			if !errors.As(err, &unsupported) {
+				t.Fatalf("Transform error = %v, want UnsupportedSpecError", err)
+			}
+			if unsupported.Code != tt.code {
+				t.Fatalf("unsupported code = %q, want %q", unsupported.Code, tt.code)
+			}
+			if unsupported.Field != tt.field {
+				t.Fatalf("unsupported field = %q, want %q", unsupported.Field, tt.field)
+			}
+		})
+	}
+}

@@ -174,3 +174,74 @@ func TestTransformerIgnoresDefaultServiceAccountProjectedVolume(t *testing.T) {
 		t.Fatalf("request image = %q, want example.com/train:latest", binding.Request.Image)
 	}
 }
+
+func TestTransformerRejectsEnvIndirection(t *testing.T) {
+	t.Parallel()
+
+	base := func(env []corev1.EnvVar, envFrom []corev1.EnvFromSource) *corev1.Pod {
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "default",
+				Name:      "train-job",
+				UID:       types.UID("pod-123"),
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{
+						Name:    "main",
+						Image:   "example.com/train:latest",
+						Env:     env,
+						EnvFrom: envFrom,
+						Resources: corev1.ResourceRequirements{
+							Limits: corev1.ResourceList{
+								corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("1"),
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	transformer := Transformer{Core: core.DefaultTransformer{}}
+
+	_, err := transformer.TransformPod(base(
+		[]corev1.EnvVar{
+			{Name: "MODEL", Value: "llama"},
+			{Name: "HF_TOKEN", ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "hf-creds"},
+					Key:                  "token",
+				},
+			}},
+		},
+		nil,
+	))
+	var valueFromErr *core.UnsupportedSpecError
+	if !errors.As(err, &valueFromErr) {
+		t.Fatalf("TransformPod error = %v, want UnsupportedSpecError", err)
+	}
+	if valueFromErr.Code != "UnsupportedEnvValueFrom" {
+		t.Fatalf("unsupported code = %q, want UnsupportedEnvValueFrom", valueFromErr.Code)
+	}
+	if valueFromErr.Field != "spec.containers[0].env[HF_TOKEN].valueFrom" {
+		t.Fatalf("unsupported field = %q, want spec.containers[0].env[HF_TOKEN].valueFrom", valueFromErr.Field)
+	}
+
+	_, err = transformer.TransformPod(base(
+		[]corev1.EnvVar{{Name: "MODEL", Value: "llama"}},
+		[]corev1.EnvFromSource{
+			{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "model-secret"}}},
+		},
+	))
+	var envFromErr *core.UnsupportedSpecError
+	if !errors.As(err, &envFromErr) {
+		t.Fatalf("TransformPod error = %v, want UnsupportedSpecError", err)
+	}
+	if envFromErr.Code != "UnsupportedEnvFrom" {
+		t.Fatalf("unsupported code = %q, want UnsupportedEnvFrom", envFromErr.Code)
+	}
+	if envFromErr.Field != "spec.containers[0].envFrom" {
+		t.Fatalf("unsupported field = %q, want spec.containers[0].envFrom", envFromErr.Field)
+	}
+}

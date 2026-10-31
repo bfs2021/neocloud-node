@@ -39,6 +39,8 @@ Unsupported fields must fail with a stable `UnsupportedSpecError` code and field
 | `spec.volumes` | `UnsupportedVolumes` | `spec.volumes` |
 | `spec.hostNetwork: true` | `UnsupportedHostNetwork` | `spec.hostNetwork` |
 | `spec.containers[0].securityContext.privileged: true` | `UnsupportedPrivilegedContainer` | `spec.containers[0].securityContext.privileged` |
+| `spec.containers[0].env[*].valueFrom` | `UnsupportedEnvValueFrom` | `spec.containers[0].env[<name>].valueFrom` |
+| `spec.containers[0].envFrom` | `UnsupportedEnvFrom` | `spec.containers[0].envFrom` |
 
 ## Non-Goals For Phase 1
 
